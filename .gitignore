@@ -1,0 +1,7 @@
+# ignore build dir
+build
+# except for Makefile
+!build/Makefile
+
+# ignore swp files
+*.sw*
