@@ -8,32 +8,77 @@
 #include <iostream>
 #include <sstream>
 #include <vector>
-#include <tuple>
+#include <thread>
 
 #include "server.hh"
-#include "http_messages.hh"
 #include "errors.hh"
-#include "misc.hh"
-#include "routes.hh"
 
-Server::Server(SocketAcceptor const& acceptor) : _acceptor(acceptor) { }
+Server::Server(SocketAcceptor const& acceptor) : _acceptor(acceptor) {
+    pause_auto = "ON";
+}
 
-void Server::run_linear() const {
+Server::~Server() {}
+
+struct server_meta {
+    Server * serverptr;
+    Socket_t * socket;
+};
+
+void listener_dispatch(server_meta * sm) {
+    sm->serverptr->command_listener(*(sm->socket));
+    delete sm;
+}
+
+void Server::new_users() {
   while (1) {
     Socket_t sock = _acceptor.accept_connection();
-    handle(sock);
+    _socks_mutex.lock();
+    server_meta * sm = new server_meta;
+    sm->serverptr = this;
+    _socks.push_back(std::move(sock));
+    sm->socket = &(_socks.back());
+    std::thread t = std::thread(listener_dispatch, sm);
+    t.detach();
+    _socks_mutex.unlock();
+    
   }
 }
 
-void Server::run_thread() const {
-  // TODO: Task 1.4
+void Server::command_listener(Socket_t& sock) {
+  std::string line;
+  while(!(line = sock->readline()).empty())
+  {
+    std::cout << line;
+    std::string command = line.substr(line.find(" ")+1);
+    if (command == "get-pause-auto\r\n")
+    {
+      sock->write(pause_auto);
+      continue;
+    }
+    if (command == "toggle-auto ON\r\n") pause_auto = "ON";
+    else if (command == "toggle-auto OFF\r\n") pause_auto = "OFF";
+    _socks_mutex.lock();
+    for (int i = 0; i < _socks.size(); i++)
+    {
+        if (_socks[i] == sock) continue;
+       _socks[i]->write(line);
+    }
+    _socks_mutex.unlock();
+  }
+  _socks_mutex.lock();
+  for (int i = 0; i < _socks.size(); i++)
+  {
+    if (_socks[i] == sock)
+    {
+        _socks.erase(_socks.begin()+i);
+        _socks_mutex.unlock();
+        return;
+    }
+  }
+  std::cout << "SOCK REMOVE ERROR!" << std::endl;
+  _socks_mutex.unlock();
 }
 
-void Server::run_thread_pool(const int num_threads) const {
-  // TODO: Task 1.4
-}
-
-// example route map. you could loop through these routes and find the first route which
 // matches the prefix and call the corresponding handler. You are free to implement
 // the different routes however you please
 /*
@@ -43,17 +88,3 @@ std::vector<Route_t> route_map = {
   std::make_pair("", handle_default)
 };
 */
-
-void Server::handle(const Socket_t& sock) const {
-  HttpRequest request;
-  // TODO: implement parsing HTTP requests
-  // recommendation:
-  // void parse_request(const Socket_t& sock, HttpRequest* const request);
-  request.print();
-
-  HttpResponse resp;
-  // TODO: Make a response for the HTTP request
-  resp.http_version = "HTTP/1.1";
-  std::cout << resp.to_string() << std::endl;
-  sock->write(resp.to_string());
-}

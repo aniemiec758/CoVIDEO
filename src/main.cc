@@ -9,6 +9,7 @@
 #include <csignal>
 #include <cstdio>
 #include <iostream>
+#include <thread>
 
 #include "server.hh"
 #include "socket.hh"
@@ -25,7 +26,6 @@ int main(int argc, char** argv) {
     sa.sa_handler = signal_handler;
     sigemptyset(&sa.sa_mask);
     sigaction(SIGINT, &sa, NULL);
-    enum concurrency_mode mode = E_NO_CONCURRENCY;
     int port_no = BOUND_PORTNO;
 
     char usage[] = "USAGE: cvdoserver [PORT_NO]\n";
@@ -41,22 +41,7 @@ int main(int argc, char** argv) {
     printf("port: %d\n", port_no);
 
     SocketAcceptor* acceptor = new TCPSocketAcceptor(port_no);
-    Socket_t sock = _acceptor:
     Server server(*acceptor);
-    server.run_thread();
-    /*switch (mode) {
-    case E_FORK_PER_REQUEST:
-        server.run_fork();
-        break;
-    case E_THREAD_PER_REQUEST:
-        server.run_thread();
-        break;
-    case E_THREAD_POOL:
-        server.run_thread_pool(num_threads);
-        break;
-    default:
-        server.run_linear();
-        break;
-    }*/
+    server.new_users();
     delete acceptor;
 }
