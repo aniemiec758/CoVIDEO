@@ -2,16 +2,21 @@ import vlc, pafy # to handle video playing
 import sys # for sys.exit() in version checking
 import threading # a thread is created to endlessly listen for incoming socket commands from the server
 import re # regex matching required for navigating video timestamps
+import socket # for server communication
 
 #=========================<Important globals>===================================
 
-SERVER = "data.cs.purdue.edu:25566" # default value can be kept by user
-SESSION_ID = "" # for the server to know which incoming requests are for who
+DEFAULT_NAV = 10 # how many seconds to move forward/back as a default
+SERVER = "" # where to connect to
+SERVER_PORT = "" # where to connect to, more specifically
+SOCK = "" # socket to listen to
 PAUSE_AUTO = "" # should new videos be paused automatically for this session?
 NEW_USER_NOTIFY = "" # do you want to be notified when a new user joins the session?
 PLAYBACK_NOTIFY = "" # do you want to be notified about when other users are managing the video?
 SETTINGS_NOTIFY = "" # do you want to be notified when someone changes their username/edits server-wide settings?
 USERNAME = "" # display name
+CURRENT_URL = "" # what video is playing?
+MEDIA_PLAYER = "" # VLC session to keep track of!
 
 #=========================<Help messages>=======================================
 
@@ -19,8 +24,8 @@ def print_simple_help():
     print("----> type \"play <youtube URL>\" to load up a new video URL for everybody")
     print("----> type \"pause\" to pause a playing video for everybody")
     print("----> type \"resume\" to resume a paused video for everybody")
-    print("----> type \"nav-forward\" to jump forwards by 10 seconds, or \"nav-forward <number>\" to jump forwards by <number> seconds for everybody")
-    print("----> type \"nav-back\" to jump back by 10 seconds, or \"nav-back <number>\" to jump back by <number> seconds for everybody")
+    print("----> type \"nav-forward\" to jump forwards by " + str(DEFAULT_NAV) + " seconds, or \"nav-forward <number>\" to jump forwards by <number> seconds for everybody")
+    print("----> type \"nav-back\" to jump back by " + str(DEFAULT_NAV) + " seconds, or \"nav-back <number>\" to jump back by <number> seconds for everybody")
     print("----> type \"nav-to <format>\" to jump to a specific timestamp of the video for everybody")
     print("------> type the format in terms of \"__h__m__s\" to specify hours, minutes, and seconds (i.e. \"nav-to 5m17s\" to go to 5:17)")
     print("----> type \"help-simple\" for this quick-reference list itself, or \"help\" for a full list of commands")
@@ -30,8 +35,8 @@ def print_full_help():
     print("----> type \"play <youtube URL>\" to load up a new video URL for everybody")
     print("----> type \"pause\" to pause a playing video for everybody")
     print("----> type \"resume\" to resume a paused video for everybody")
-    print("----> type \"nav-forward\" to jump forwards by 10 seconds, or \"nav-forward <number>\" to jump forwards by <number> seconds for everybody")
-    print("----> type \"nav-back\" to jump back by 10 seconds, or \"nav-back <number>\" to jump back by <number> seconds for everybody")
+    print("----> type \"nav-forward\" to jump forwards by " + str(DEFAULT_NAV) + " seconds, or \"nav-forward <number>\" to jump forwards by <number> seconds for everybody")
+    print("----> type \"nav-back\" to jump back by " + str(DEFAULT_NAV) + " seconds, or \"nav-back <number>\" to jump back by <number> seconds for everybody")
     print("----> type \"nav-to\ <format>\" to jump to a specific timestamp of the video for everybody")
     print("------> type the format in terms of \"__h__m__s\" to specify hours, minutes, and seconds (i.e. \"nav-to 5m17s\" to go to 5:17)")
     print("----> type \"help-simple\" for a printout of just this quick-reference list")
@@ -40,7 +45,8 @@ def print_full_help():
     print("\n--> Personal commands:")
     print("----> type \"change-username <new username to use>\" to modify your username, helpful if two people end up using the same name!")
     print("------> (you must pick a username that does not have spaces in it)")
-    print("---> type \"whoami\" to get your current username")
+    print("----> type \"whoami\" to get your current username")
+    print("----> type \"get-url\" to get the URL of the currently playing video")
     print("----> type \"new-user-notify [ON|OFF]\" to set whether you personally will get command-line notifications of new users joining the session")
     print("----> type \"playback-notify [ON|OFF]\" to set whether you personally will get command-line notifications of other users managing the video")
     print("----> type \"settings-notify [ON|OFF]\" to set whether you personally will get command-line notifications of other users editing session-wide settings")
@@ -60,20 +66,13 @@ def print_current_settings():
 
 #=========================<Helpers>=============================================
 
-def configure_new_session():
-    print("\n--> Now just answer a few questions regarding your connection to this session (any of these values may be changed later on via commands):")
-
-    # auto-pausing
-    pause_input = input("----> Would you like new videos to automatically be paused for everybody? (yes/no) ")
-    if (pause_input == "yes"):
-        PAUSE_AUTO = "ON"
-        print("------> Video pausing turned ON")
-    else:
-        PAUSE_AUTO = "OFF"
-        print("------> Video pausing turned OFF")
+def get_session_settings():
+    # TODO TODO query for PAUSE-AUTO via 'get-pause-auto/r/n'
+    #print("----> Pause new videos automatically for everybody: " + PAUSE-AUTO)
 
     # TODO TODO TODO anything else? (if you want to specify a video quality or go auto, etc pafy things)
     # update in help text, infinite command parsing block, notifications printout, have a global, communicate with server, etc
+    pass
 
 def configure_personal_settings():
     print("\n--> Finally, answer some questions regarding your personal login session")
@@ -131,51 +130,141 @@ def check_toggle_on_off(option):
 
 # verifies __h__m__s format (I am not very good at regex)
 def check_timestamp_pattern(p):
-    
+    if (bool(re.match(r"^[0-9]+[smh]$", p))): # *h, *m, and *s
+        return 1
+    if (bool(re.match(r"^[0-9]+m[0-9]+s$", p))): # *m*s
+        return 1
+    if (bool(re.match(r"^[0-9]+h[0-9]+s$", p))): # *h*s
+        return 1
+    if (bool(re.match(r"^[0-9]+h[0-9]+m$", p))): # *h*m
+        return 1
+    if (bool(re.match(r"^[0-9]+h[0-9]+m[0-9]+s$", p))): # *h*m*s
+        return 1
+
+    return 0
+
+# is a video even playing to manipulate?
+def check_video():
+    if (MEDIA_PLAYER == ""):
+        print("** No video is currently playing")
+        return 0
+    else:
+        return 1
 
 #=========================<Socket interfacing>=======================================
 
 # endlessly listen for server requests coming over the socket
 def socket_handler():
-    # TODO TODO TODO TODO
-    pass
+    while (1): # forever, within its own thread
+        # receiving from socket
+        c = ""
+        msg = ""
+        while (1):
+            c = SOCK.recv(1)
+            s += c
+        c = SOCK.recv(1) # final \n, all commands end with \r\n
+
+        # handling request; commands can be assumed to be correctly-typed, since they were checked before they were sent over the socket originally
+        print("~~~~~~~MESSAGE FROM THE SOCKET::: " + msg)
+
+        cmd_list = msg.split()
+        cmd = cmd_list[1]
+
+        if (cmd == "play"):
+            print("* " + cmd_list[0] + " played a new URL")
+            handle_play(cmd_list[2])
+        elif (cmd == "pause"):
+            print("* " + cmd_list[0] + " paused")
+            handle_pause()
+        elif (cmd == "resume"):
+            print("* " + cmd_list[0] + " resumed")
+            handle_resume()
+        elif (cmd == "nav-forward"):
+            print("* " + cmd_list[0] + " navigated forwards " + cmd_list[2] + " seconds")
+            handle_nav_forward(cmd_list[2])
+        elif (cmd == "nav-back"):
+            print("* " + cmd_list[0] + " navigated back " + cmd_list[2] + " seconds")
+            handle_nav_back(cmd_list[2])
+        elif (cmd == "nav-to"):
+            print("* " + cmd_list[0] + " went to " + cmd_list[2])
+            handle_nav_to(cmd_list[2])
+
+        elif (cmd == "toggle-auto"):
+            print("* " + cmd_list[0] + " turned auto-pausing " + cmd_list[2])
+            PAUSE_AUTO = cmd_list[2]
+
+        elif (cmd == "change-username"):
+            print("* " + cmd_list[0] + " changed their username to " + cmd_list[2])
 
 # formulates and sends a message to the server
-def send_message():
-    # TODO TODO TODO TODO
-    pass
+def send_message(m):
+    print("~~~~~~~~~~~~~~~~~~~~sending message: " + m)
+    SOCK.send(USERNAME + " " + m + "\r\n")
 
 #=========================<Playback commands>===================================
 
 def handle_play(video_url):
-    print("-handle_play, with video_url %" + video_url + "%")
-    # TODO TODO server communication
-    pass
+    CURRENT_URL = video_url
+
+    # starting in VLC
+    vid = pafy.new(video_url)
+    best = vid.getbest()
+    new_media_player = vlc.MediaPlayer(best.url)
+    #if (not new_media_player.will_play()):
+    #    print("** Unable to play the video at the specified URL (is it a YouTube link? do you have VLC installed? are you doing this in an SSH client?)")
+    #    return 0
+    MEDIA_PLAYER = new_media_player
+    MEDIA_PLAYER.play()
+    return 1
 
 def handle_pause():
-    print("-handle_pause")
-    # TODO TODO server communication
-    pass
+    if (not check_video()):
+        return
+    if (MEDIA_PLAYER.get_state == vlc.State.Paused):
+        print("** Video is already paused")
+        return
+    MEDIA_PLAYER.pause()
 
 def handle_resume():
-    print("-handle_resume")
-    # TODO TODO server communication
-    pass
+    if (not check_video()):
+        return
+    if (MEDIA_PLAYER.get_state == vlc.State.Playing):
+        print("** Video is already playing/resumed")
+        return
+    MEDIA_PLAYER.pause() # VLC's library resumes a paused video is pause() is called again
 
-def handle_nav_forward(t=""):
-    print("-handle_nav_forward, with t %" + t + "%")
-    # TODO TODO server communication
-    pass
+def handle_nav_forward(t):
+    if (not check_video()):
+        return
+    if (t < 0):
+        print("** Error, negative value not expected")
+        return
 
-def handle_nav_back(t=""):
-    print("-handle_nav_back, with t %" + t + "%")
-    # TODO TODO server communication
-    pass
+    # TODO TODO
 
-def handle_nav_to(time_format=""):
-    print("-handle_nav_to, with time format %" + time_format + "%")
-    # TODO TODO server communication
-    pass
+def handle_nav_back(t):
+    if (not check_video()):
+        return
+    if (t < 0):
+        print("** Error, negative value not expected")
+        return
+
+    # TODO TODO
+
+def handle_nav_to(time_format):
+    if (not check_video()):
+        return
+
+    # starting in VLC
+    vid = pafy.net(CURRENT_URL + "?t=" + t)
+    best = vid.getbest()
+    new_media_player = vlc.MediaPlayer(best.url)
+    #if (not new_media_player.will_play()):
+    #    print("** Unable to play the video at the specified URL (is it a YouTube link? do you have VLC installed? are you doing this in an SSH client?)")
+    #    return 0
+    MEDIA_PLAYER = new_media_player
+    MEDIA_PLAYER.play()
+    return 1
 
 #=========================<Main>================================================
 
@@ -189,52 +278,45 @@ def main():
     print("=== Welcome to COVIDeo! ===")
     print("** IMPORTANT: COVIDeo requires VLC Media Player, a freeware video playing application, to be installed on your device (https://www.videolan.org/vlc/) **")
     print("--> Thank you for choosing our application in these trying times!")
-    print("\n--> First, type in which server you wish to contact in <server IP>:<port number> format.")
-    print("----> (type \"default\" for the default input of 'data.cs.purdue.edu:25566' - this is the recommended option for grading TA's!)")
+    print("\n--> First, type in which server you wish to contact.")
+    print("----> (type \"default\" for the default input of 'mc18.cs.purdue.edu' - this is the recommended option for grading TA's!)")
 
     # configuring server address
     server_input = input("server: ")
 
     if (server_input != "default"):
         SERVER = server_input
-        print("--> Using custom server")
+        if (SERVER == "mc18.cs.purdue.edu"):
+            print("--> Using 'custom server'... but it's the same as the default one")
+        else:
+            print("--> Using custom server")
     else:
-        SERVER = "data.cs.purdue.edu:25566"
+        SERVER = "mc18.cs.purdue.edu"
         print("--> Using default server, an excellent choice!")
 
+    print("--> Which port number to connect to? Ask who started up the server!")
+    SERVER_PORT = input("port: ")
+
     # attempting to connect to server
-    # TODO TODO TODO TODO TODO
+    if (SERVER != "skip"): # hidden debug flag # TODO TODO TODO remove later
+        SOCK = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        SOCK.connect((SERVER, SERVER_PORT))
     print("----> Connected to server successfully!")
 
-    # creating or joining a session
-    print("\n--> Would you like to join an existing COVIDeo session, or start a new one?")
-    print("----> (type \"new\" to have a new session ID generated for you, otherwise type the session ID of your friend!)")
-
-    session_input = input("session_id: ")
-
-    # error handling aroud SESSION_ID
-    if (session_input != "new"):
-        # verifying session ID, otherwise reprompting endlessly
-        print("------> Attempting to connect to session " + session_input + "...")
-        # TODO TODO TODO TODO communicate with server to verify given SESSION_ID; if-else block about infinite loop or something
-        print("------> Success!")
-
-    else:
-        print("------> Attempting to create new session ID...")
-        # TODO TODO TODO TODO communicate with server to get and set new SESSION_ID
-        print("----> New session ID created: " + SESSION_ID)
-        print("------> (this may be viewed anytime by typing the command \"session-id\"")
-
-        # configuring a new session
-        configure_new_session()
-
-    # any lingering questions to ask regarding personal settings
+    # questions to ask regarding personal settings
     configure_personal_settings()
+
+    # getting session-wide settings from server
+    print("\n--> Getting current session-wide settings from the server...")
+    get_session_settings()
+    print("--> Any session-wide settings that apply to all users can be configured via commands, see the \"help\" command for more information")
 
     # all ready to go, final remarks before endless command handling and socket listening
     print("\n--> All ready to go! To see the full list of commands, type \"help\", but here's the gist:")
     print_simple_help()
     print("** IMPORTANT: you must use these commands to sync up with your friends - using VLC itself to navigate or play/pause won't send these commands out! **")
+
+    # TODO TODO send message to server that a user has joined, so that it pops up (or scrap idea if no time left)
 
     # endless socket listening
     sock_thr = threading.Thread(target = socket_handler)
@@ -266,25 +348,38 @@ def main():
             if (not check_args_req(cmd_line, 2)):
                 print("YouTube URL not supplied")
                 continue
-            handle_play(cmd_list[1])
+
+            # must check URL first before sending message
+            if (handle_play(cmd_list[1])):
+                send_message("play " + CURRENT_URL)
         elif (cmd == "pause"):
             check_args_req(cmd_line, 1)
+
+            send_message("pause")
             handle_pause()
         elif (cmd == "resume"):
             check_args_req(cmd_line, 1)
+
+            send_message("resume")
             handle_resume()
         elif (cmd == "nav-forward"):
             check_args_req(cmd_line, 1, 2)
+
             if (len(cmd_list) > 1): # optional arg
+                send_message("nav-forward " + cmd_list[1])
                 handle_nav_forward(cmd_list[1])
             else:
-                handle_nav_forward()
+                send_message("nav-forward " + DEFAULT_NAV)
+                handle_nav_forward(DEFAULT_NAV)
         elif (cmd == "nav-back"):
             check_args_req(cmd_line, 1, 2)
+
             if (len(cmd_list) > 1): # optional arg
+                send_message("nav-back " + cmd_list[1])
                 handle_nav_back(cmd_list[1])
             else:
-                handle_nav_back()
+                send_message("nav-back " + DEFAULT_NAV)
+                handle_nav_back(DEFAULT_NAV)
         elif (cmd == "nav-to"):
             if (not check_args_req(cmd_line, 2)):
                 print("No time format specified (in __h__m__s format, see \"help\" for more details)")
@@ -293,7 +388,11 @@ def main():
             if (not cmd_list[1] or not check_timestamp_pattern(cmd_list[1])):
                 print("** timestamp argument must be in the format __h__m__s (to specify hours, minutes, and seconds (i.e. \"nav-to 5m17s\" to go to 5:17)")
                 continue
-            handle_nav_to(cmd_list[1])
+
+            # must check URL first before sending message
+            if (handle_nav_to(cmd_list[1])):
+                send_message("nav-to " + cmd_list[1])
+
 
         # session-wide
         elif (cmd == "toggle-auto"):
@@ -302,15 +401,17 @@ def main():
                 continue
             if (check_toggle_on_off(cmd_list[1])):
                 PAUSE_AUTO = cmd_list[1]
-                # TODO TODO TODO update the server with this information
+                send_message("toggle-auto " + PAUSE_AUTO)
 
-        # personal
+        # personal, but must be transmitted
         elif (cmd == "change-username"):
             if (not check_args_req(cmd_line, 2)):
                 print("Must specify a new username that does not have spaces in it")
                 continue
             USERNAME = cmd_list[1]
-            # TODO TODO TODO update the server with this information
+            send_message("change-username " + USERNAME)
+
+        # personal and limited to this client
         elif (cmd == "whoami"):
             check_args_req(cmd_line, 1)
             print("---> You are " + USERNAME)
@@ -332,14 +433,19 @@ def main():
                 continue
             if (check_toggle_on_off(cmd_list[1])):
                 SETTINGS_NOTIFY = cmd_list[1]
+        elif (cmd == "get-url"):
+            check_args_req(cmd_line, 1)
+            if (not check_video()):
+                continue
+            print("The current video is playing from " + CURRENT_URL)
 
         # no clue
         else:
             print("** command not found - type \"help\" to get the full list of what's possible (or if there had been a typo in your query)")
 
-        # TODO TODO TODO should there be an "exit" command, and if you're the last user of a session, the session gets deleted? stretch-goal if time permits
         # TODO TODO something like printing current session ID, printing all users in room, etc... maybe a chat option???
         #       switching to a chat mode vs command mode?
+        # TODO have a stop command to stop the video?
 
 if __name__ == '__main__':
     main()
