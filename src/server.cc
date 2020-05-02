@@ -52,7 +52,10 @@ void Server::command_listener(Socket_t& sock) {
     std::string command = line.substr(line.find(" ")+1);
     if (command == "get-pause-auto\r\n")
     {
-      sock->write(pause_auto+"\r\n");
+      line.pop_back();
+      line.pop_back();
+      line += " " + pause_auto + "\r\n";
+      sock->write(line);
       continue;
     }
     if (command == "toggle-auto ON\r\n")
