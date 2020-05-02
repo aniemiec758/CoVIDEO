@@ -74,11 +74,8 @@ def print_current_settings():
 #=========================<Helpers>=============================================
 
 def get_session_settings():
-    send_message("get-pause-auto") # TODO reinstate eventually
-
-    # TODO TODO TODO anything else? (if you want to specify a video quality or go auto, etc pafy things)
-    # update in help text, infinite command parsing block, notifications printout, have a global, communicate with server, etc
-    pass # TODO remove the pass statement
+    #global USERNAME
+    send_message("get-pause-auto") # TODO send username too??
 
 def configure_personal_settings():
     global USERNAME, NEW_USER_NOTIFY, PLAYBACK_NOTIFY, SETTINGS_NOTIFY
@@ -173,9 +170,10 @@ def socket_handler():
         c = ""
         msg = ""
         while (1):
-            c = SOCK.recv(1)
-            s += c
-        c = SOCK.recv(1) # final \n, all commands end with \r\n
+            c = SOCK.recv(1).decode('utf-8')
+            if (c == '\n'):
+                break
+            msg += str(c)
 
         # handling request; commands can be assumed to be correctly-typed, since they were checked before they were sent over the socket originally
         print("~~~~~~~MESSAGE FROM THE SOCKET::: " + msg) # TODO remove later
@@ -212,6 +210,8 @@ def socket_handler():
         # getter functions that a client might send
         elif (cmd == "get-pause-auto"):
             PAUSE_AUTO = cmd_list[2]
+        elif (cmd == "joined"):
+            print("* " + cmd_list[0] + " joined")
 
 # formulates and sends a message to the server
 def send_message(m):
@@ -332,10 +332,9 @@ def main():
         SERVER_PORT = "25565"
 
     # attempting to connect to server
-    if (SERVER != "skip"): # hidden debug flag # TODO TODO TODO remove later
-        SOCK = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        SOCK.connect((SERVER, int(SERVER_PORT)))
-        print("----> Connected to server successfully!")
+    SOCK = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    SOCK.connect((SERVER, int(SERVER_PORT)))
+    print("----> Connected to server successfully!")
 
     # questions to ask regarding personal settings
     configure_personal_settings()
@@ -350,7 +349,8 @@ def main():
     print_simple_help()
     print("** IMPORTANT: you must use these commands to sync up with your friends - using VLC itself to navigate or play/pause won't send these commands out! **")
 
-    # TODO TODO send message to server that a user has joined, so that it pops up (or scrap idea if no time left)
+    # send message to server that a user has joined, so that it pops up for everybody else who wants that sort of notification
+    send_message(USERNAME + "joined")
 
     # endless socket listening
     sock_thr = threading.Thread(target = socket_handler)
