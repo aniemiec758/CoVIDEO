@@ -1,21 +1,25 @@
 #ifndef  INCLUDE_SERVER_HH_
 #define INCLUDE_SERVER_HH_
 
+#include <mutex>
+#include <vector>
+#include <memory>
+
 #include "socket.hh"
 
 class Server {
  private:
-    Socket_t const& _sock;
+    SocketAcceptor const& _acceptor;
+    std::mutex _socks_mutex;
+    std::string pause_auto;
 
  public:
-    explicit Server(const Socket_t sock);
-    void run_linear() const;
-    void run_fork() const;
-    void run_thread_pool(const int num_threads) const;
-    void run_thread() const;
+    explicit Server(SocketAcceptor const& acceptor);
+    ~Server();
+    void new_users();
+    void command_listener(Socket_t& sock);
 
-
-    void handle(const Socket_t& sock) const;
+    std::vector<Socket_t> _socks;
 };
 
 #endif  // INCLUDE_SERVER_HH_
