@@ -75,7 +75,7 @@ def print_current_settings():
 
 def get_session_settings():
     #global USERNAME
-    send_message("get-pause-auto") # TODO send username too??
+    send_message("get-pause-auto")
 
 def configure_personal_settings():
     global USERNAME, NEW_USER_NOTIFY, PLAYBACK_NOTIFY, SETTINGS_NOTIFY
@@ -171,12 +171,18 @@ def socket_handler():
         msg = ""
         while (1):
             c = SOCK.recv(1).decode('utf-8')
-            if (c == '\n'):
+            if (c == '\r'):
                 break
             msg += str(c)
+        SOCK.recv(1) # for final \n
 
         # handling request; commands can be assumed to be correctly-typed, since they were checked before they were sent over the socket originally
-        print("~~~~~~~MESSAGE FROM THE SOCKET::: " + msg) # TODO remove later
+        #print("~~~~~~~MESSAGE FROM THE SOCKET::: " + msg) # old debug statement
+
+        # for inital default settings, server bug mandates this for functionality
+        if (msg == "ON" or msg == "OFF"):
+            PAUSE_AUTO = msg
+            return
 
         cmd_list = msg.split()
         cmd = cmd_list[1]
@@ -215,10 +221,11 @@ def socket_handler():
 
 # formulates and sends a message to the server
 def send_message(m):
-    global USERNAME
+    global USERNAME, SOCK, SERVER
 
-    print("~~~~~~~~~~~~~~~~~~~~sending message: " + USERNAME + " " + m + "\r\n") # TODO remove later
-    SOCK.send((USERNAME + " " + m + "\r\n").encode())
+    #print("~~~~~~~~~~~~~~~~~~~~sending message: " + USERNAME + " " + m + "\r\n") # old debug statement
+    if (SERVER != "skip"):
+        SOCK.send((USERNAME + " " + m + "\r\n").encode())
 
 #=========================<Playback commands>===================================
 
@@ -283,7 +290,7 @@ def handle_nav_to(time_format):
         return
 
     # starting in VLC
-    vid = pafy.net(CURRENT_URL + "?t=" + t)
+    vid = pafy.new(CURRENT_URL + "?t=" + t)
     best = vid.getbest()
     new_media_player = vlc.MediaPlayer(best.url)
     #if (not new_media_player.will_play()):
@@ -327,13 +334,17 @@ def main():
         print("--> Using default server, an excellent choice!")
 
     print("--> Which port number to connect to? Ask who started up the server!")
-    SERVER_PORT = input("port: ")
-    if (SERVER_PORT == "default"):
-        SERVER_PORT = "25565"
+    if (SERVER != "skip"):
+        SERVER_PORT = input("port: ")
+        if (SERVER_PORT == "default"):
+            SERVER_PORT = "25565"
+    else:
+        SERVER_PORT = "N/A"
 
     # attempting to connect to server
-    SOCK = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    SOCK.connect((SERVER, int(SERVER_PORT)))
+    if (SERVER != "skip"):
+        SOCK = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        SOCK.connect((SERVER, int(SERVER_PORT)))
     print("----> Connected to server successfully!")
 
     # questions to ask regarding personal settings
@@ -350,11 +361,12 @@ def main():
     print("** IMPORTANT: you must use these commands to sync up with your friends - using VLC itself to navigate or play/pause won't send these commands out! **")
 
     # send message to server that a user has joined, so that it pops up for everybody else who wants that sort of notification
-    send_message(USERNAME + "joined")
+    send_message("joined")
 
     # endless socket listening
-    sock_thr = threading.Thread(target = socket_handler)
-    sock_thr.start()
+    if (SERVER != "skip"):
+        sock_thr = threading.Thread(target = socket_handler)
+        sock_thr.start()
     #sock_thr.join()
 
     # endless command parsing
@@ -476,10 +488,6 @@ def main():
         # no clue
         else:
             print("** command not found - type \"help\" to get the full list of what's possible (or if there had been a typo in your query)")
-
-        # TODO TODO something like printing current session ID, printing all users in room, etc... maybe a chat option???
-        #       switching to a chat mode vs command mode?
-        # TODO have a stop command to stop the video?
 
 if __name__ == '__main__':
     main()
