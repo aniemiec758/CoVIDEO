@@ -52,7 +52,7 @@ void Server::command_listener(Socket_t& sock) {
     std::string command = line.substr(line.find(" ")+1);
     if (command == "get-pause-auto\r\n")
     {
-      sock->write(pause_auto);
+      sock->write(pause_auto+"\r\n");
       continue;
     }
     if (command == "toggle-auto ON\r\n") pause_auto = "ON";
@@ -65,17 +65,19 @@ void Server::command_listener(Socket_t& sock) {
     }
     _socks_mutex.unlock();
   }
+
   _socks_mutex.lock();
   for (int i = 0; i < _socks.size(); i++)
   {
     if (_socks[i] == sock)
     {
         _socks.erase(_socks.begin()+i);
+        std::cout << "REMOVED SOCK" << std::endl;
         _socks_mutex.unlock();
         return;
     }
   }
-  std::cout << "SOCK REMOVE ERROR!" << std::endl;
+  std::cout << "SOCK REMOVE COULD NOT FIND SOCK!" << std::endl;
   _socks_mutex.unlock();
 }
 
