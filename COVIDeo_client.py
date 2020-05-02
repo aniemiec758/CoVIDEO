@@ -3,6 +3,7 @@ import sys # for sys.exit() in version checking
 import threading # a thread is created to endlessly listen for incoming socket commands from the server
 import re # regex matching required for navigating video timestamps
 import socket # for server communication
+import warnings # suppress library warnings that mess up the text interface
 
 #=========================<Important globals>===================================
 
@@ -21,6 +22,8 @@ MEDIA_PLAYER = "" # VLC session to keep track of!
 #=========================<Help messages>=======================================
 
 def print_simple_help():
+    global DEFAULT_NAV
+
     print("----> type \"play <youtube URL>\" to load up a new video URL for everybody")
     print("----> type \"pause\" to pause a playing video for everybody")
     print("----> type \"resume\" to resume a paused video for everybody")
@@ -31,6 +34,8 @@ def print_simple_help():
     print("----> type \"help-simple\" for this quick-reference list itself, or \"help\" for a full list of commands")
 
 def print_full_help():
+    global DEFAULT_NAV
+
     print("--> Simple video player commands:")
     print("----> type \"play <youtube URL>\" to load up a new video URL for everybody")
     print("----> type \"pause\" to pause a playing video for everybody")
@@ -55,6 +60,8 @@ def print_full_help():
     print("----> type \"print-settings\" for a list of session-wide and personal settings that have been configured")
 
 def print_current_settings():
+    global USERNAME, PAUSE_AUTO, NEW_USER_NOTIFY, PLAYBACK_NOTIFY, SETTINGS_NOTIFY
+
     print("--> Your username: " + USERNAME)
     print("--> Current session-wide settings:")
     print("----> Automatically pausing newly loaded-up videos for everyone: " + PAUSE_AUTO)
@@ -67,14 +74,15 @@ def print_current_settings():
 #=========================<Helpers>=============================================
 
 def get_session_settings():
-    # TODO TODO query for PAUSE-AUTO via 'get-pause-auto/r/n'
-    #print("----> Pause new videos automatically for everybody: " + PAUSE-AUTO)
+    send_message("get-pause-auto") # TODO reinstate eventually
 
     # TODO TODO TODO anything else? (if you want to specify a video quality or go auto, etc pafy things)
     # update in help text, infinite command parsing block, notifications printout, have a global, communicate with server, etc
-    pass
+    #pass # TODO remove the pass statement
 
 def configure_personal_settings():
+    global USERNAME, NEW_USER_NOTIFY, PLAYBACK_NOTIFY, SETTINGS_NOTIFY
+
     print("\n--> Finally, answer some questions regarding your personal login session")
 
     # username to transmit
@@ -145,6 +153,8 @@ def check_timestamp_pattern(p):
 
 # is a video even playing to manipulate?
 def check_video():
+    global MEDIA_PLAYER
+
     if (MEDIA_PLAYER == ""):
         print("** No video is currently playing")
         return 0
@@ -156,6 +166,8 @@ def check_video():
 # endlessly listen for server requests coming over the socket
 def socket_handler():
     global SOCK
+    global PAUSE_AUTO
+
     while (1): # forever, within its own thread
         # receiving from socket
         c = ""
@@ -166,7 +178,7 @@ def socket_handler():
         c = SOCK.recv(1) # final \n, all commands end with \r\n
 
         # handling request; commands can be assumed to be correctly-typed, since they were checked before they were sent over the socket originally
-        print("~~~~~~~MESSAGE FROM THE SOCKET::: " + msg)
+        print("~~~~~~~MESSAGE FROM THE SOCKET::: " + msg) # TODO remove later
 
         cmd_list = msg.split()
         cmd = cmd_list[1]
@@ -197,14 +209,21 @@ def socket_handler():
         elif (cmd == "change-username"):
             print("* " + cmd_list[0] + " changed their username to " + cmd_list[2])
 
+        # getter functions that a client might send
+        elif (cmd == "get-pause-auto"):
+            PAUSE_AUTO = cmd_list[2]
+
 # formulates and sends a message to the server
 def send_message(m):
-    print("~~~~~~~~~~~~~~~~~~~~sending message: " + m)
+    global USERNAME
+    print("~~~~~~~~~~~~~~~~~~~~sending message: " + m) # TODO remove later
     SOCK.send((USERNAME + " " + m + "\r\n").encode())
 
 #=========================<Playback commands>===================================
 
 def handle_play(video_url):
+    global CURRENT_URL, MEDIA_PLAYER
+
     CURRENT_URL = video_url
 
     # starting in VLC
@@ -219,6 +238,8 @@ def handle_play(video_url):
     return 1
 
 def handle_pause():
+    global MEDIA_PLAYER
+
     if (not check_video()):
         return
     if (MEDIA_PLAYER.get_state == vlc.State.Paused):
@@ -227,6 +248,8 @@ def handle_pause():
     MEDIA_PLAYER.pause()
 
 def handle_resume():
+    global MEDIA_PLAYER
+
     if (not check_video()):
         return
     if (MEDIA_PLAYER.get_state == vlc.State.Playing):
@@ -241,7 +264,7 @@ def handle_nav_forward(t):
         print("** Error, negative value not expected")
         return
 
-    # TODO TODO
+    # TODO TODO (potentially remove)
 
 def handle_nav_back(t):
     if (not check_video()):
@@ -250,9 +273,11 @@ def handle_nav_back(t):
         print("** Error, negative value not expected")
         return
 
-    # TODO TODO
+    # TODO TODO (potentially remove)
 
 def handle_nav_to(time_format):
+    global CURRENT_URL, MEDIA_PLAYER
+
     if (not check_video()):
         return
 
@@ -270,7 +295,11 @@ def handle_nav_to(time_format):
 #=========================<Main>================================================
 
 def main():
-    global SOCK
+    global DEFAULT_NAV, SERVER, SERVER_PORT, SOCK, PAUSE_AUTO, NEW_USER_NOTIFY, PLAYBACK_NOTIFY, SETTINGS_NOTIFY, USERNAME, CURRENT_URL, MEDIA_PLAYER
+
+    # disabling library warnings that mangle the text interface
+    warnings.filterwarnings("ignore")
+
     # version checking - very important, since python2 uses raw_input() for I/O and python3 uses input()
     if sys.version_info[0] < 3:
         print("--> Error: you must use python3 to run COVIDeo")
@@ -366,7 +395,7 @@ def main():
 
             send_message("resume")
             handle_resume()
-        elif (cmd == "nav-forward"):
+        elif (cmd == "nav-forward"): # TODO potentially remove
             check_args_req(cmd_line, 1, 2)
 
             if (len(cmd_list) > 1): # optional arg
@@ -375,7 +404,7 @@ def main():
             else:
                 send_message("nav-forward " + DEFAULT_NAV)
                 handle_nav_forward(DEFAULT_NAV)
-        elif (cmd == "nav-back"):
+        elif (cmd == "nav-back"): # TODO potentially remove
             check_args_req(cmd_line, 1, 2)
 
             if (len(cmd_list) > 1): # optional arg
