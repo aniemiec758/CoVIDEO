@@ -55,8 +55,16 @@ void Server::command_listener(Socket_t& sock) {
       sock->write(pause_auto+"\r\n");
       continue;
     }
-    if (command == "toggle-auto ON\r\n") pause_auto = "ON";
-    else if (command == "toggle-auto OFF\r\n") pause_auto = "OFF";
+    if (command == "toggle-auto ON\r\n")
+    {
+        std::cout << "Setting pause-auto ON" << std::endl;
+        pause_auto = "ON";
+    }
+    else if (command == "toggle-auto OFF\r\n")
+    {
+        std::cout << "Setting pause-auto OFF" << std::endl;
+        pause_auto = "OFF";
+    }
     _socks_mutex.lock();
     for (int i = 0; i < _socks.size(); i++)
     {

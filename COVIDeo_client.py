@@ -9,7 +9,7 @@ import socket # for server communication
 DEFAULT_NAV = 10 # how many seconds to move forward/back as a default
 SERVER = "" # where to connect to
 SERVER_PORT = "" # where to connect to, more specifically
-SOCK = "" # socket to listen to
+#SOCK = "" # socket to listen to
 PAUSE_AUTO = "" # should new videos be paused automatically for this session?
 NEW_USER_NOTIFY = "" # do you want to be notified when a new user joins the session?
 PLAYBACK_NOTIFY = "" # do you want to be notified about when other users are managing the video?
@@ -155,6 +155,7 @@ def check_video():
 
 # endlessly listen for server requests coming over the socket
 def socket_handler():
+    global SOCK
     while (1): # forever, within its own thread
         # receiving from socket
         c = ""
@@ -199,7 +200,7 @@ def socket_handler():
 # formulates and sends a message to the server
 def send_message(m):
     print("~~~~~~~~~~~~~~~~~~~~sending message: " + m)
-    SOCK.send(USERNAME + " " + m + "\r\n")
+    SOCK.send((USERNAME + " " + m + "\r\n").encode())
 
 #=========================<Playback commands>===================================
 
@@ -269,6 +270,7 @@ def handle_nav_to(time_format):
 #=========================<Main>================================================
 
 def main():
+    global SOCK
     # version checking - very important, since python2 uses raw_input() for I/O and python3 uses input()
     if sys.version_info[0] < 3:
         print("--> Error: you must use python3 to run COVIDeo")
@@ -296,12 +298,14 @@ def main():
 
     print("--> Which port number to connect to? Ask who started up the server!")
     SERVER_PORT = input("port: ")
+    if (SERVER_PORT == "default"):
+        SERVER_PORT = "25565"
 
     # attempting to connect to server
     if (SERVER != "skip"): # hidden debug flag # TODO TODO TODO remove later
         SOCK = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        SOCK.connect((SERVER, SERVER_PORT))
-    print("----> Connected to server successfully!")
+        SOCK.connect((SERVER, int(SERVER_PORT)))
+        print("----> Connected to server successfully!")
 
     # questions to ask regarding personal settings
     configure_personal_settings()
@@ -321,7 +325,7 @@ def main():
     # endless socket listening
     sock_thr = threading.Thread(target = socket_handler)
     sock_thr.start()
-    sock_thr.join()
+    #sock_thr.join()
 
     # endless command parsing
     while (1):
