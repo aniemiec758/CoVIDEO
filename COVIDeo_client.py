@@ -78,7 +78,7 @@ def get_session_settings():
 
     # TODO TODO TODO anything else? (if you want to specify a video quality or go auto, etc pafy things)
     # update in help text, infinite command parsing block, notifications printout, have a global, communicate with server, etc
-    #pass # TODO remove the pass statement
+    pass # TODO remove the pass statement
 
 def configure_personal_settings():
     global USERNAME, NEW_USER_NOTIFY, PLAYBACK_NOTIFY, SETTINGS_NOTIFY
@@ -216,8 +216,8 @@ def socket_handler():
 def send_message(m):
     global USERNAME
 
-    print("~~~~~~~~~~~~~~~~~~~~sending message: " + m) # TODO remove later
-    SOCK.send(USERNAME + " " + m + "\r\n")
+    print("~~~~~~~~~~~~~~~~~~~~sending message: " + USERNAME + " " + m + "\r\n") # TODO remove later
+    SOCK.send(USERNAME + " " + m + "\r\n") # TODO reinstate eventually
 
 #=========================<Playback commands>===================================
 
