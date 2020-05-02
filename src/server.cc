@@ -49,18 +49,21 @@ void Server::command_listener(Socket_t& sock) {
   while(!(line = sock->readline()).empty())
   {
     std::cout << line;
-    if (line == "get-pause-auto\r\n")
+    std::string command = line.substr(line.find(" ")+1);
+    if (command == "get-pause-auto\r\n")
     {
       sock->write(pause_auto);
       continue;
     }
+    if (command == "toggle-auto ON\r\n") pause_auto = "ON";
+    else if (command == "toggle-auto OFF\r\n") pause_auto = "OFF";
+    _socks_mutex.lock();
     for (int i = 0; i < _socks.size(); i++)
     {
-       if (_socks[i] == sock) continue;
-       if (line == "toggle-auto ON\r\n") pause_auto = "ON";
-       else if (line == "toggle-auto OFF\r\n") pause_auto = "OFF";
+        if (_socks[i] == sock) continue;
        _socks[i]->write(line);
     }
+    _socks_mutex.unlock();
   }
   _socks_mutex.lock();
   for (int i = 0; i < _socks.size(); i++)
