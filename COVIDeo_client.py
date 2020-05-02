@@ -2,12 +2,14 @@ import vlc, pafy # to handle video playing
 import sys # for sys.exit() in version checking
 import threading # a thread is created to endlessly listen for incoming socket commands from the server
 import re # regex matching required for navigating video timestamps
+import socket # for server communication
 
 #=========================<Important globals>===================================
 
 DEFAULT_NAV = 10 # how many seconds to move forward/back as a default
 SERVER = "" # where to connect to
 SERVER_PORT = "" # where to connect to, more specifically
+SOCK = "" # socket to listen to
 PAUSE_AUTO = "" # should new videos be paused automatically for this session?
 NEW_USER_NOTIFY = "" # do you want to be notified when a new user joins the session?
 PLAYBACK_NOTIFY = "" # do you want to be notified about when other users are managing the video?
@@ -153,18 +155,55 @@ def check_video():
 
 # endlessly listen for server requests coming over the socket
 def socket_handler():
-    # TODO TODO TODO TODO
-    pass
+    while (1): # forever, within its own thread
+        # receiving from socket
+        c = ""
+        msg = ""
+        while (1):
+            c = SOCK.recv(1)
+            s += c
+        c = SOCK.recv(1) # final \n, all commands end with \r\n
+
+        # handling request; commands can be assumed to be correctly-typed, since they were checked before they were sent over the socket originally
+        print("~~~~~~~MESSAGE FROM THE SOCKET::: " + msg)
+
+        cmd_list = msg.split()
+        cmd = cmd_list[1]
+
+        if (cmd == "play"):
+            print("* " + cmd_list[0] + " played a new URL")
+            handle_play(cmd_list[2])
+        elif (cmd == "pause"):
+            print("* " + cmd_list[0] + " paused")
+            handle_pause()
+        elif (cmd == "resume"):
+            print("* " + cmd_list[0] + " resumed")
+            handle_resume()
+        elif (cmd == "nav-forward"):
+            print("* " + cmd_list[0] + " navigated forwards " + cmd_list[2] + " seconds")
+            handle_nav_forward(cmd_list[2])
+        elif (cmd == "nav-back"):
+            print("* " + cmd_list[0] + " navigated back " + cmd_list[2] + " seconds")
+            handle_nav_back(cmd_list[2])
+        elif (cmd == "nav-to"):
+            print("* " + cmd_list[0] + " went to " + cmd_list[2])
+            handle_nav_to(cmd_list[2])
+
+        elif (cmd == "toggle-auto"):
+            print("* " + cmd_list[0] + " turned auto-pausing " + cmd_list[2])
+            PAUSE_AUTO = cmd_list[2]
+
+        elif (cmd == "change-username"):
+            print("* " + cmd_list[0] + " changed their username to " + cmd_list[2])
 
 # formulates and sends a message to the server
 def send_message(m):
     print("~~~~~~~~~~~~~~~~~~~~sending message: " + m)
-    # TODO TODO TODO TODO
+    SOCK.send(USERNAME + " " + m + "\r\n")
 
 #=========================<Playback commands>===================================
 
 def handle_play(video_url):
-    print("-handle_play, with video_url %" + video_url + "%")
     CURRENT_URL = video_url
 
     # starting in VLC
@@ -172,14 +211,13 @@ def handle_play(video_url):
     best = vid.getbest()
     new_media_player = vlc.MediaPlayer(best.url)
     #if (not new_media_player.will_play()):
-    #    print("** Unable to play the video at the specified URL (is it a YouTube link? do you have VLC installed?)")
+    #    print("** Unable to play the video at the specified URL (is it a YouTube link? do you have VLC installed? are you doing this in an SSH client?)")
     #    return 0
     MEDIA_PLAYER = new_media_player
     MEDIA_PLAYER.play()
     return 1
 
 def handle_pause():
-    print("-handle_pause")
     if (not check_video()):
         return
     if (MEDIA_PLAYER.get_state == vlc.State.Paused):
@@ -188,7 +226,6 @@ def handle_pause():
     MEDIA_PLAYER.pause()
 
 def handle_resume():
-    print("-handle_resume")
     if (not check_video()):
         return
     if (MEDIA_PLAYER.get_state == vlc.State.Playing):
@@ -197,7 +234,6 @@ def handle_resume():
     MEDIA_PLAYER.pause() # VLC's library resumes a paused video is pause() is called again
 
 def handle_nav_forward(t):
-    print("-handle_nav_forward, with t %" + t + "%")
     if (not check_video()):
         return
     if (t < 0):
@@ -207,7 +243,6 @@ def handle_nav_forward(t):
     # TODO TODO
 
 def handle_nav_back(t):
-    print("-handle_nav_back, with t %" + t + "%")
     if (not check_video()):
         return
     if (t < 0):
@@ -217,7 +252,6 @@ def handle_nav_back(t):
     # TODO TODO
 
 def handle_nav_to(time_format):
-    print("-handle_nav_to, with time format %" + time_format + "%")
     if (not check_video()):
         return
 
@@ -226,7 +260,7 @@ def handle_nav_to(time_format):
     best = vid.getbest()
     new_media_player = vlc.MediaPlayer(best.url)
     #if (not new_media_player.will_play()):
-    #    print("** Unable to play the video at the specified URL (is it a YouTube link? do you have VLC installed?)")
+    #    print("** Unable to play the video at the specified URL (is it a YouTube link? do you have VLC installed? are you doing this in an SSH client?)")
     #    return 0
     MEDIA_PLAYER = new_media_player
     MEDIA_PLAYER.play()
@@ -261,10 +295,12 @@ def main():
         print("--> Using default server, an excellent choice!")
 
     print("--> Which port number to connect to? Ask who started up the server!")
-    port_input = input("port: ")
+    SERVER_PORT = input("port: ")
 
     # attempting to connect to server
-    # TODO TODO TODO TODO TODO
+    if (SERVER != "skip"): # hidden debug flag # TODO TODO TODO remove later
+        SOCK = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        SOCK.connect((SERVER, SERVER_PORT))
     print("----> Connected to server successfully!")
 
     # questions to ask regarding personal settings
@@ -407,7 +443,6 @@ def main():
         else:
             print("** command not found - type \"help\" to get the full list of what's possible (or if there had been a typo in your query)")
 
-        # TODO TODO TODO should there be an "exit" command, and if you're the last user of a session, the session gets deleted? stretch-goal if time permits
         # TODO TODO something like printing current session ID, printing all users in room, etc... maybe a chat option???
         #       switching to a chat mode vs command mode?
         # TODO have a stop command to stop the video?
